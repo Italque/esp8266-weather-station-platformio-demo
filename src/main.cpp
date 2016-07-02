@@ -105,6 +105,9 @@ String lastUpdate = "--";
 
 Ticker ticker;
 
+//At night display astronomy infos in place of Forecast !
+bool toogleNight=false;
+
 //declaring prototypes
 void configModeCallback (WiFiManager *myWiFiManager);
 void drawProgress(OLEDDisplay *display, int percentage, String label);
@@ -233,6 +236,20 @@ void loop() {
     // time budget.
 
     ArduinoOTA.handle();
+
+    // Conditionnal frame display based on time : Day with forecast or Night with Moon
+    String strHours = timeClient.getHours();
+    int hours = strHours.toInt();
+    if  (hours>20 && toogleNight==false){
+      toogleNight=true;
+      FrameCallback frames[] = { drawDateTime, drawNight, drawCurrentWeather, drawThingspeak, drawIndoor};
+      ui.setFrames(frames, numberOfFrames);
+    }
+    else if (hours==5 && toogleNight==true){
+      toogleNight=false;
+      FrameCallback frames[] = { drawDateTime, drawCurrentWeather, drawForecast, drawThingspeak, drawIndoor};
+      ui.setFrames(frames, numberOfFrames);
+    }
 
     delay(remainingTimeBudget);
   }
