@@ -31,6 +31,7 @@ SOFTWARE.
 
 */
 
+#define Use_BME280 // Using BME280 temperature, barometer, altimeter
 #define DEBUG
 
 #include <ESP8266WiFi.h>
@@ -51,6 +52,10 @@ SOFTWARE.
 #include "WeatherStationImages.h"
 #include "TimeClient.h"
 #include "ThingspeakClient.h"
+
+#if defined(Use_BME280)
+#include "BME280.h"
+#endif
 
 /***************************
  * Begin Settings
@@ -90,6 +95,14 @@ OLEDDisplayUi   ui( &display );
 /***************************
  * End Settings
  **************************/
+
+#if defined(Use_BME280) // Initialize BME280 sensor
+BME280 bme; // Weather Monitoring forced mode : 0.16μA
+float local_temperature = 0.;
+float local_humidity = 0.;
+float local_pressure = 0.;
+float local_altitude = 0.;
+#endif
 
 TimeClient timeClient(UTC_OFFSET);
 
@@ -151,6 +164,15 @@ void setup() {
   display.setFont(ArialMT_Plain_10);
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.setContrast(255);
+
+#if defined(Use_BME280) //BME280 settings
+  delay(10);  //Make sure sensor had enough time to turn on. BME280 requires 2ms to start up.
+  uint8_t strbeg = bme.begin();
+  #if defined(DEBUG)
+  Serial.print("BME280 sensor init : ");
+  Serial.println(strbeg, HEX);
+  #endif
+  #endif
 
   //WiFiManager
   //Local intialization. Once its business is done, there is no need to keep it around
@@ -304,8 +326,25 @@ void updateData(OLEDDisplay *display) {
   drawProgress(display, 80, "Updating thingspeak...");
   thingspeak.getLastChannelItem(THINGSPEAK_CHANNEL_ID, THINGSPEAK_API_READ_KEY);
   lastUpdate = timeClient.getFormattedTime();
+  #if defined(Use_BME280) //Indoor BME280 sensor
+  drawProgress(display, 90, "Updating local temp...");
+  uint8_t pressureUnit(3); // B001 for hPa pressure Unit
+  bme.ReadData(local_pressure, local_temperature, local_humidity, pressureUnit, uint8_t(IS_METRIC));
+  local_altitude = bme.CalculateAltitude(bool(IS_METRIC));
+  #endif
   readyForWeatherUpdate = false;
   drawProgress(display, 100, "Done !");
+  #if defined (DEBUG)
+  Serial.print("Temp: ");
+  Serial.print(local_temperature);
+  Serial.print("°C - Hygro: ");
+  Serial.print(local_humidity);
+  Serial.print("% - Altitude: ");
+  Serial.print(local_altitude);
+  Serial.print("m - Pressure: ");
+  Serial.print(local_pressure);
+  Serial.print("Pa");
+  #endif
   delay(1000);
 }
 
@@ -319,6 +358,10 @@ void drawDateTime(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, in
   String time = timeClient.getFormattedTime();
   textWidth = display->getStringWidth(time);
   display->drawString(64 + x, 15 + y, time);
+  #if defined(Use_BME280)
+  display->setFont(ArialMT_Plain_10);
+  display->drawString(64 + x, 37 + y, String(local_altitude) + "meters");
+  #endif
   display->setTextAlignment(TEXT_ALIGN_LEFT);
 }
 
@@ -378,6 +421,15 @@ void drawForecastDetails(OLEDDisplay *display, int x, int y, int dayIndex) {
   display->setTextAlignment(TEXT_ALIGN_LEFT);
 }
 
+void drawIndoor(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
+  display->setTextAlignment(TEXT_ALIGN_CENTER);
+  display->setFont(ArialMT_Plain_10);
+  display->drawString(64 + x, 0 + y, "Indoor");
+  display->setFont(ArialMT_Plain_24);
+  display->drawString(64 + x, 6 + y, String(local_temperature) + "°C");
+  display->drawString(64 + x, 25 + y, String(local_humidity) + "%");
+}
+
 void drawNight(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y){
   display->setFont(ArialMT_Plain_10);
   display->setTextAlignment(TEXT_ALIGN_LEFT);
@@ -414,6 +466,10 @@ void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
   display->drawString(38, 54, time);
 
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
+  //Display indoor and outdoor temp :
+  String indoor = String(local_temperature);
+  indoor.remove(2);
+  display->drawString(90, 54, indoor + "-");
   String temp = wunderground.getCurrentTemp() + "°";
   display->drawString(106, 54, temp);
 
